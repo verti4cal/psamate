@@ -36,6 +36,29 @@ A self-hosted tracker for your PSA/Stellantis vehicle — Peugeot, Citroën, DS,
 
    This builds a single container with the API, poller, and web UI, and exposes it on port 80. Your data is stored in a Docker volume, so it survives restarts and upgrades.
 
+   Prefer not to build locally? Every tagged release is published to
+   `ghcr.io/verti4cal/psamate`. Save this as `docker-compose.yaml` and run
+   `docker compose up -d` — no clone needed:
+
+   ```yaml
+   services:
+     psamate:
+       image: ghcr.io/verti4cal/psamate:latest
+       ports:
+         - "80:3000"
+       environment:
+         LOG_LEVEL: info
+       volumes:
+         - psamate-data:/data
+       restart: unless-stopped
+
+   volumes:
+     psamate-data:
+   ```
+
+   Pin a specific version instead of always tracking `latest` by using an
+   image tag like `ghcr.io/verti4cal/psamate:1.2.3`.
+
 3. **Open the app**
 
    Visit `http://localhost` (or your server's address) in a browser. You'll land on the setup wizard.
@@ -63,9 +86,18 @@ A self-hosted tracker for your PSA/Stellantis vehicle — Peugeot, Citroën, DS,
 
 ## Updating
 
+If you built from source:
+
 ```bash
 git pull
 docker compose up --build -d
+```
+
+If you're running the pre-built image:
+
+```bash
+docker compose pull
+docker compose up -d
 ```
 
 Your data is preserved across updates.

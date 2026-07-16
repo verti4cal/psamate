@@ -8,7 +8,15 @@
         db-generate db-migrate db-reset setup-reset \
         docker-build docker-up docker-down docker-logs docker-restart \
         docker-dev-up docker-dev-down \
-        clean
+        clean version
+
+# Lets `make version 1.2.3` work as well as `make version VERSION=1.2.3` —
+# treats the word after "version" as the version number rather than trying
+# (and failing) to find a make target with that name.
+ifeq (version,$(firstword $(MAKECMDGOALS)))
+  VERSION := $(word 2,$(MAKECMDGOALS))
+  $(eval $(VERSION):;@:)
+endif
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -122,3 +130,24 @@ docker-dev-down: ## Stop dev containers
 
 clean: ## Remove build artefacts from both workspaces
 	rm -rf backend/dist frontend/dist
+
+# ── Release ───────────────────────────────────────────────────────────────────
+
+# Bumps version.json, commits it to main, then tags and pushes — the tag
+# push is what triggers .github/workflows/docker-release.yml to build and
+# publish the image. Usage: make version 1.2.3 (or make version VERSION=1.2.3)
+version: ## Bump version.json, commit, tag, and push — triggers the release build
+	@test -n "$(VERSION)" || (echo "Usage: make version 1.2.3" && exit 1)
+	@echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' \
+		|| (echo "VERSION must look like a semver version, e.g. 1.2.3 or 1.2.3-beta.1" && exit 1)
+	@[ "$$(git branch --show-current)" = "main" ] \
+		|| (echo "Not on main (currently on $$(git branch --show-current)) — switch to main first" && exit 1)
+	@git diff --quiet && git diff --cached --quiet \
+		|| (echo "Working tree has uncommitted changes — commit or stash them first" && exit 1)
+	node -e "const fs=require('fs');const f='version.json';const v=JSON.parse(fs.readFileSync(f,'utf8'));v.version='$(VERSION)';fs.writeFileSync(f, JSON.stringify(v, null, 2) + '\n');"
+	git add version.json
+	git commit -m "Release v$(VERSION)"
+	git push origin main
+	git tag v$(VERSION)
+	git push origin v$(VERSION)
+	@echo "Released v$(VERSION) — image build: https://github.com/verti4cal/psamate/actions"

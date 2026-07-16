@@ -25,6 +25,7 @@ import {
 import { api } from "@/lib/api";
 import type { Vehicle } from "@/lib/api";
 import { useVehicle } from "@/contexts/VehicleContext";
+import { Footer } from "./Footer";
 
 const navItems = [
   { to: "/",           icon: LayoutDashboard, label: "Dashboard", end: true },
@@ -136,6 +137,8 @@ export function Sidebar() {
           </Link>
         </div>
       </nav>
+
+      <Footer />
     </aside>
   );
 }

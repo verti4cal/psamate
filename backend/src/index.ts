@@ -17,6 +17,7 @@ import { refreshAllTokens } from "./services/psa-auth.js";
 import { settingsRepository } from "./db/repositories/index.js";
 import { startPoller } from "./services/poller.js";
 import { connectMqtt } from "./services/mqtt.js";
+import { appVersion } from "./version.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 
@@ -30,6 +31,8 @@ await chargeRoutes(app);
 await commandRoutes(app);
 await statsRoutes(app);
 await settingsRoutes(app);
+
+app.get("/api/version", async () => ({ version: appVersion }));
 
 // Serve the built frontend when bundled alongside the backend in the
 // combined production image. In dev, WEB_DIST_PATH is unset and Vite

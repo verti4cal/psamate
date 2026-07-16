@@ -39,6 +39,7 @@ ENV DATABASE_PATH=/data/psamate.db
 ENV PORT=3000
 ENV WEB_DIST_PATH=/app/web-dist
 
+COPY version.json ./version.json
 COPY --from=backend-deps /app/node_modules ./node_modules
 COPY --from=backend-build /app/package.json ./package.json
 COPY --from=backend-build /app/dist ./dist

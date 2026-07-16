@@ -95,7 +95,7 @@ const SENSOR_DEFS = [
   { attr: "battery_capacity_wh", name: "Battery Capacity", unit: "Wh", deviceClass: null, valueTemplate: "{{ value_json.batteryCapacityWh }}" },
   { attr: "battery_residual_wh", name: "Battery Residual Energy", unit: "Wh", deviceClass: null, valueTemplate: "{{ value_json.batteryResidualWh }}" },
   { attr: "battery_health_percent", name: "Battery Health", unit: "%", deviceClass: null, valueTemplate: "{{ value_json.batteryHealthPercent }}" },
-  { attr: "battery_12v_voltage", name: "12V Battery", unit: "V", deviceClass: "voltage", valueTemplate: "{{ value_json.battery12vVoltage }}" },
+  { attr: "battery_12v_voltage", name: "12V Battery", unit: "%", deviceClass: "battery", valueTemplate: "{{ value_json.battery12vVoltage }}" },
   { attr: "privacy_state", name: "Privacy State", unit: null, deviceClass: null, valueTemplate: "{{ value_json.privacyState }}" },
   { attr: "service_type", name: "Service Type", unit: null, deviceClass: null, valueTemplate: "{{ value_json.serviceType }}" },
 ] as const;

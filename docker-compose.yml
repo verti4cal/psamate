@@ -1,0 +1,15 @@
+services:
+  psamate:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    volumes:
+      - data:/data
+    environment:
+      DATABASE_PATH: /data/psamate.db
+      PORT: "3000"
+      LOG_LEVEL: info
+
+volumes:
+  data:

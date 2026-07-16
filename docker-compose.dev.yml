@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      target: builder
+    command: npx tsx watch src/index.ts
+    volumes:
+      - ./backend/src:/app/src:ro
+      - ./backend/tsconfig.json:/app/tsconfig.json:ro
+      - ./data:/data
+    environment:
+      DATABASE_PATH: /data/psamate.db
+      PORT: "3000"
+      LOG_LEVEL: debug
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: ./frontend
+      target: builder
+    command: npx vite --host
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/tailwind.config.ts:/app/tailwind.config.ts:ro
+      - ./frontend/postcss.config.js:/app/postcss.config.js:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+    environment:
+      VITE_PROXY_TARGET: "http://backend:3000"
+    ports:
+      - "5173:5173"
+    networks:
+      - internal
+
+networks:
+  internal:

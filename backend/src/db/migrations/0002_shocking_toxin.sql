@@ -1,0 +1,1 @@
+ALTER TABLE `vehicles` ADD `needs_reauth` integer DEFAULT false NOT NULL;

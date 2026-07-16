@@ -99,6 +99,7 @@ export function Setup() {
     setError(null);
     try {
       const resp = await api.post<{ vehicleCount: number }>("/api/setup/sync-vehicles", { brand });
+      await queryClient.invalidateQueries({ queryKey: ["setup-status"] });
       await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       navigate(resp.data.vehicleCount > 0 ? "/" : "/setup", { replace: true });
     } catch (e: unknown) {
@@ -151,6 +152,8 @@ export function Setup() {
     setError(null);
     try {
       await api.post("/api/setup/exchange-code", { code: code.trim() });
+      await queryClient.invalidateQueries({ queryKey: ["setup-status"] });
+      await queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       navigate("/", { replace: true });
     } catch (e: unknown) {
       setError(extractError(e, "Token exchange failed. The code may have expired — generate a new URL and try again."));

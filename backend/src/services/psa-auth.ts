@@ -1,6 +1,6 @@
 import axios, { isAxiosError } from "axios";
 import crypto from "crypto";
-import { settingsRepository } from "../db/repositories/index.js";
+import { settingsRepository, vehiclesRepository } from "../db/repositories/index.js";
 
 const BRAND_TO_REALM: Record<string, string> = {
   peugeot:  "clientsB2CPeugeot",
@@ -94,6 +94,10 @@ export function realmForBrand(brand: string): string {
   const realm = BRAND_TO_REALM[brand];
   if (!realm) throw new Error(`Unknown brand: ${brand}`);
   return realm;
+}
+
+function brandForRealm(realm: string): string | undefined {
+  return Object.entries(BRAND_TO_REALM).find(([, r]) => r === realm)?.[0];
 }
 
 function generatePkce(): { verifier: string; challenge: string } {
@@ -205,7 +209,7 @@ export async function refreshTokenIfNeeded(realm: string): Promise<void> {
   if (!tokens) return;
 
   const nowSec = Math.floor(Date.now() / 1000);
-  if (tokens.tokenExpiry - nowSec > 600) return;
+  if (tokens.tokenExpiry - nowSec > 1800) return;
 
   const { tokenUrl } = REALM_CONFIG[realm];
 
@@ -246,10 +250,25 @@ export async function refreshTokenIfNeeded(realm: string): Promise<void> {
 /** Refresh tokens for every brand that has credentials stored. */
 export async function refreshAllTokens(): Promise<void> {
   for (const realm of Object.values(BRAND_TO_REALM)) {
-    if (getTokenSet(realm)) {
-      await refreshTokenIfNeeded(realm).catch((e) =>
-        console.error(`[psa-auth] Refresh failed for ${realm}:`, e)
-      );
-    }
+    if (!getTokenSet(realm)) continue;
+
+    await refreshTokenIfNeeded(realm).catch((err) => {
+      console.error(`[psa-auth] Refresh failed for ${realm}:`, err);
+
+      // A definitive rejection (invalid/expired refresh token) means no
+      // amount of retrying will fix it — flag affected vehicles immediately
+      // rather than waiting for the next poll's 401 to notice. Transient
+      // failures (network errors, PSA 5xx) are left alone since the next
+      // cron tick will simply retry.
+      const isAuthRejection =
+        isAxiosError(err) && (err.response?.status === 400 || err.response?.status === 401);
+      if (!isAuthRejection) return;
+
+      const brand = brandForRealm(realm);
+      if (!brand) return;
+      for (const v of vehiclesRepository.findAll()) {
+        if (v.brand === brand) vehiclesRepository.setNeedsReauth(v.id, true);
+      }
+    });
   }
 }

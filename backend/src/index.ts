@@ -50,6 +50,12 @@ if (fs.existsSync(webDistPath)) {
   });
 }
 
+// Refresh once immediately at startup — covers the case where the
+// container was stopped past a token's refresh window (rebuild, host
+// reboot) and would otherwise sit on a near-dead token until the next
+// 5-minute tick fires.
+await refreshAllTokens().catch(console.error);
+
 // Token refresh every 5 minutes
 cron.schedule("*/5 * * * *", () => refreshAllTokens().catch(console.error));
 

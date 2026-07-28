@@ -1,6 +1,51 @@
-import axios, { isAxiosError } from "axios";
+import axios, { isAxiosError, type AxiosInstance } from "axios";
 import crypto from "crypto";
 import { settingsRepository, vehiclesRepository } from "../db/repositories/index.js";
+
+const SECRET_KEYS = new Set(["access_token", "refresh_token"]);
+
+/** Redacts token values before logging a PSA token-endpoint response body. */
+function redactTokenBody(data: unknown): unknown {
+  if (typeof data !== "object" || data === null) return data;
+  return Object.fromEntries(
+    Object.entries(data as Record<string, unknown>).map(([key, value]) =>
+      SECRET_KEYS.has(key) ? [key, "[redacted]"] : [key, value]
+    )
+  );
+}
+
+// Every token-endpoint call (authorization_code exchange, refresh) goes
+// through this client, so logging here — same pattern as psa-api.ts's
+// createClient() — covers both without repeating it at each call site.
+// Request/refresh tokens in the response body are redacted before logging.
+const authClient: AxiosInstance = axios.create();
+
+authClient.interceptors.request.use((config) => {
+  (config as { metadata?: { start: number } }).metadata = { start: Date.now() };
+  console.log(`[psa-auth] → ${config.method?.toUpperCase()} ${config.url}`);
+  return config;
+});
+
+authClient.interceptors.response.use(
+  (resp) => {
+    const start = (resp.config as { metadata?: { start: number } }).metadata?.start;
+    const ms = start ? Date.now() - start : undefined;
+    console.log(
+      `[psa-auth] ← ${resp.status} ${resp.config.method?.toUpperCase()} ${resp.config.url}${ms !== undefined ? ` (${ms}ms)` : ""}: ${JSON.stringify(redactTokenBody(resp.data))}`
+    );
+    return resp;
+  },
+  (err) => {
+    if (isAxiosError(err)) {
+      const start = (err.config as { metadata?: { start: number } } | undefined)?.metadata?.start;
+      const ms = start ? Date.now() - start : undefined;
+      console.error(
+        `[psa-auth] ← ${err.response?.status ?? "ERR"} ${err.config?.method?.toUpperCase()} ${err.config?.url}${ms !== undefined ? ` (${ms}ms)` : ""}: ${JSON.stringify(redactTokenBody(err.response?.data) ?? err.message)}`
+      );
+    }
+    return Promise.reject(err);
+  }
+);
 
 const BRAND_TO_REALM: Record<string, string> = {
   peugeot:  "clientsB2CPeugeot",
@@ -167,7 +212,7 @@ export async function exchangeCode(code: string): Promise<void> {
 
   let resp;
   try {
-    resp = await axios.post(
+    resp = await authClient.post(
       tokenUrl,
       new URLSearchParams({
         grant_type:    "authorization_code",
@@ -183,7 +228,6 @@ export async function exchangeCode(code: string): Promise<void> {
   } catch (err) {
     if (isAxiosError(err) && err.response) {
       const body = JSON.stringify(err.response.data);
-      console.error(`[psa-auth] Token exchange failed ${err.response.status}: ${body}`);
       throw new Error(`PSA returned ${err.response.status}: ${body}`);
     }
     throw err;
@@ -213,25 +257,17 @@ export async function refreshTokenIfNeeded(realm: string): Promise<void> {
 
   const { tokenUrl } = REALM_CONFIG[realm];
 
-  let resp;
-  try {
-    resp = await axios.post(
-      tokenUrl,
-      new URLSearchParams({
-        grant_type:    "refresh_token",
-        refresh_token: tokens.refreshToken,
-      }),
-      {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        auth: { username: tokens.clientId, password: tokens.clientSecret },
-      }
-    );
-  } catch (err) {
-    if (isAxiosError(err) && err.response) {
-      console.error(`[psa-auth] Token refresh failed ${err.response.status}:`, err.response.data);
+  const resp = await authClient.post(
+    tokenUrl,
+    new URLSearchParams({
+      grant_type:    "refresh_token",
+      refresh_token: tokens.refreshToken,
+    }),
+    {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      auth: { username: tokens.clientId, password: tokens.clientSecret },
     }
-    throw err;
-  }
+  );
 
   const { access_token, refresh_token: newRefresh, expires_in } = resp.data as {
     access_token: string;

@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from "axios";
+import axios, { isAxiosError, type AxiosInstance } from "axios";
 import { realmForBrand, getTokenSet } from "./psa-auth.js";
 
 // Correct base URL from psa_car_controller — note .com not .io
@@ -9,7 +9,7 @@ function createClient(brand: string): AxiosInstance {
   const tokens = getTokenSet(realm);
   if (!tokens) throw new Error(`Not authenticated for brand ${brand}`);
 
-  return axios.create({
+  const client = axios.create({
     baseURL: API_BASE,
     headers: {
       Authorization:        `Bearer ${tokens.accessToken}`,
@@ -18,6 +18,37 @@ function createClient(brand: string): AxiosInstance {
     },
     params: { client_id: tokens.clientId },
   });
+
+  // Every call PSA's API makes goes through this client, so logging here
+  // (rather than at each call site) covers all current and future requests.
+  client.interceptors.request.use((config) => {
+    (config as { metadata?: { start: number } }).metadata = { start: Date.now() };
+    console.log(`[psa-api] → ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (resp) => {
+      const start = (resp.config as { metadata?: { start: number } }).metadata?.start;
+      const ms = start ? Date.now() - start : undefined;
+      console.log(
+        `[psa-api] ← ${resp.status} ${resp.config.method?.toUpperCase()} ${resp.config.url}${ms !== undefined ? ` (${ms}ms)` : ""}: ${JSON.stringify(resp.data)}`
+      );
+      return resp;
+    },
+    (err) => {
+      if (isAxiosError(err)) {
+        const start = (err.config as { metadata?: { start: number } } | undefined)?.metadata?.start;
+        const ms = start ? Date.now() - start : undefined;
+        console.error(
+          `[psa-api] ← ${err.response?.status ?? "ERR"} ${err.config?.method?.toUpperCase()} ${err.config?.url}${ms !== undefined ? ` (${ms}ms)` : ""}: ${JSON.stringify(err.response?.data ?? err.message)}`
+        );
+      }
+      return Promise.reject(err);
+    }
+  );
+
+  return client;
 }
 
 export interface PsaVehicle {
@@ -90,26 +121,13 @@ export async function fetchVehicles(brand: string): Promise<PsaVehicle[]> {
     embedded?: { vehicles?: PsaVehicle[] };
   }>("/user/vehicles", { params: { embed: "extension" } });
 
-  console.log("[psa-api] fetchVehicles raw response:", JSON.stringify(resp.data));
-
   // HAL+JSON uses _embedded; fall back to embedded just in case
-  const vehicles =
-    resp.data?._embedded?.vehicles ??
-    resp.data?.embedded?.vehicles ??
-    [];
-
-  console.log(`[psa-api] found ${vehicles.length} vehicle(s)`);
-  return vehicles;
+  return resp.data?._embedded?.vehicles ?? resp.data?.embedded?.vehicles ?? [];
 }
 
-let _statusLogged = false;
 export async function fetchVehicleStatus(psaId: string, brand: string): Promise<PsaStatus> {
   const client = createClient(brand);
   const resp = await client.get<PsaStatus>(`/user/vehicles/${psaId}/status`);
-  if (!_statusLogged) {
-    console.log("[psa-api] first status response:", JSON.stringify(resp.data));
-    _statusLogged = true;
-  }
   return resp.data;
 }
 
